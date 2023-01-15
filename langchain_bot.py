@@ -15,7 +15,6 @@ import gradio as gr
 import re
 import os
 
-os.environ["OPENAI_API_KEY"] = "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"
 
 def get_github_docs(repo_owner, repo_name):
     with tempfile.TemporaryDirectory() as d:
