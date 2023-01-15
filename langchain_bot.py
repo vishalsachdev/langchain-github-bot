@@ -11,7 +11,11 @@ import tempfile
 from dagster import asset
 from dagster import FreshnessPolicy, RetryPolicy
 import pickle
+import gradio as gr
+import re
+import os
 
+os.environ["OPENAI_API_KEY"] = "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"
 
 def get_github_docs(repo_owner, repo_name):
     with tempfile.TemporaryDirectory() as d:
@@ -35,10 +39,18 @@ def get_github_docs(repo_owner, repo_name):
                 github_url = f"https://github.com/{repo_owner}/{repo_name}/blob/{git_sha}/{relative_path}"
                 yield Document(page_content=f.read(), metadata={"source": github_url})
 
+username = ""
+repo_name = ""
+url = ""
+def get_url(url):
+    match = re.match(r'https://github.com/([\w-]+)/([\w-]+)', url)
+    username = match.group(1)
+    repo_name = match.group(2)
+    return repo_name, username
 
 @asset
 def source_docs():
-    return list(get_github_docs("dagster-io", "dagster"))
+    return list(get_github_docs(get_url(url)))
 
 
 @asset(
@@ -58,16 +70,28 @@ def search_index(source_docs):
 
 chain = load_qa_with_sources_chain(OpenAI(temperature=0))
 
-
 def print_answer(question):
     with open("search_index.pickle", "rb") as f:
         search_index = pickle.load(f)
-    print(
-        chain(
-            {
-                "input_documents": search_index.similarity_search(question, k=4),
-                "question": question,
-            },
-            return_only_outputs=True,
-        )["output_text"]
-    )
+    return chain(
+        {
+            "input_documents": search_index.similarity_search(question, k=4),
+            "question": question,
+        },
+        return_only_outputs=True,
+        )
+
+url = gr.Interface(
+    fn= get_url,
+    inputs=gr.Textbox(lines=2, placeholder="Enter your URL here...", label="url"),
+    outputs= "text"
+)
+q_and_a = gr.Interface(
+    fn=print_answer,
+    inputs=gr.Textbox(lines=2, placeholder="Enter your question here...", label="user_question"),
+    outputs="text",
+)
+
+demo = gr.TabbedInterface([url, q_and_a], ["Enter URL", "ChatBot"])
+demo.launch(share=True)
+
